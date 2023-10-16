@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "ai-content-gen-workflow"
+version = "0.1.0"
+description = ""
+authors = ["Zach Lefkovitz <zachlefko@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+prefect = "^2.13.7"
+httpx = "^0.25.0"
+selenium = "^4.14.0"
+langchain = "^0.0.314"
+openai = "^0.28.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
