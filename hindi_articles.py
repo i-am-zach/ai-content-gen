@@ -10,17 +10,23 @@ from slugify import slugify
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import CommaSeparatedListOutputParser
+from dotenv import load_dotenv
 
 from article_scraper import scrape_india_today, scrape_the_hindu, scrape_ndtv, scrape_toi
 
-OUTPUT_DIR = "./out"
+load_dotenv()
+
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./out")
 OUTPUT_PARSER = CommaSeparatedListOutputParser()
 DATE_HASH = lambda: dt.date.today().strftime("%Y-%m-%d")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 @task
 def fetch_and_dump_provider(provider: RSSFeedProvider, output_dir: Path, logger):
     logger.info(f"Fetching {provider.id} feed")
-    feed = provider.get_feed()
+    feed = [{ 'provider': provider.id, **article.to_dict()} for article in provider.get_feed()]
+    output_dir = Path(OUTPUT_DIR) / 'feeds' / DATE_HASH()
+    os.makedirs(output_dir, exist_ok=True)
     with open(output_dir / f"{provider.id}.json", 'w') as f:
         logger.info(f"Dumping {provider.id}.json to file")  
         json.dump(feed, f)
@@ -80,7 +86,7 @@ def get_interesting_articles_prompt(articles_list_string: str):
 
 @task
 def fetch_interesting_articles(prompt: str, articles: list) -> list:
-    llm = OpenAI(openai_api_key="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")
+    llm = OpenAI(openai_api_key=OPENAI_API_KEY)
     output = llm(prompt)
     indexes = [int(i) for i in OUTPUT_PARSER.parse(output)]
     return [articles[i-1] for i in indexes]
@@ -134,7 +140,7 @@ def summarize_article(provider: str, title: str, lines: list[str]):
         Your Article:\n""",
         input_variables=["title", "provider", "content"],
     )
-    llm = OpenAI(openai_api_key="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")
+    llm = OpenAI(openai_api_key=OPENAI_API_KEY)
     article_summary_prompt = prompt.format(
         title=title,
         provider=provider,
@@ -142,7 +148,6 @@ def summarize_article(provider: str, title: str, lines: list[str]):
     )
     output = llm(article_summary_prompt)
     return output
-
 
 
 @flow
@@ -167,8 +172,13 @@ def interesting_articles_flow():
             logger.info(f"{interesting_article['provider']} article {interesting_article['title']} already scraped. Skipping")
             continue
 
-        driver = webdriver.Safari()
+        # Check if the article is already scraped
+        if os.path.exists(Path(OUTPUT_DIR) / 'articles' / provider / f"{title_slug}.txt"):
+            continue
+        if provider == "timesofindia":
+            continue
         try:
+            driver = webdriver.Safari()
             scraped_article_lines = scrape_article(driver, provider, url)
             store_scraped_interesting_article_content(scraped_article_lines, interesting_article['provider'], interesting_article['title'])
         except Exception as e:
@@ -194,5 +204,5 @@ def summarize_article_basic_flow():
 
 
 if __name__ == "__main__":
-    # interesting_articles_flow.serve(name="interesting_articles_deployment")
-    summarize_article_basic_flow.serve(name="summarize_article_basic_deployment")
+    interesting_articles_flow.serve(name="interesting_articles_deployment")
+    # summarize_article_basic_flow.serve(name="summarize_article_basic_deployment")
